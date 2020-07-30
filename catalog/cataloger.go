@@ -97,9 +97,9 @@ type EntryCataloger interface {
 	ResetEntry(ctx context.Context, repository, branch string, path string) error
 	ResetEntries(ctx context.Context, repository, branch string, prefix string) error
 
-	// QueryExpired returns ExpiryRows iterating over all objects to expire on
+	// QueryEntriesToExpire returns ExpiryRows iterating over all objects to expire on
 	// repositoryName according to policy.
-	QueryExpired(ctx context.Context, repositoryName string, policy *Policy) (ExpiryRows, error)
+	QueryEntriesToExpire(ctx context.Context, repositoryName string, policy *Policy) (ExpiryRows, error)
 	// MarkExpired marks all entries identified by expire as expired.  It is a batch operation.
 	MarkExpired(ctx context.Context, repositoryName string, expireResults []*ExpireResult) error
 	DedupReportChannel() chan *DedupReport

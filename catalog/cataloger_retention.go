@@ -179,7 +179,7 @@ func (e *expiryRows) Read() (*ExpireResult, error) {
 	}, nil
 }
 
-func (c *cataloger) QueryExpired(ctx context.Context, repositoryName string, policy *Policy) (ExpiryRows, error) {
+func (c *cataloger) QueryEntriesToExpire(ctx context.Context, repositoryName string, policy *Policy) (ExpiryRows, error) {
 	logger := logging.FromContext(ctx).WithField("policy", *policy)
 
 	// TODO(ariels): Get lowest possible isolation level here.
