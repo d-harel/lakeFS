@@ -84,7 +84,8 @@ var expireCmd = &cobra.Command{
 				// (not a failure)
 				continue
 			}
-			expiryRows, err := cataloger.QueryExpired(ctx, repo.Name, &policy.Policy)
+			// TODO(ariels): Rewrite this!
+			expiryRows, err := cataloger.QueryEntriesToExpire(ctx, repo.Name, &policy.Policy)
 			if err != nil {
 				repoLogger.WithError(err).Error("failed to query for expired (skip repo)")
 				numFailures++

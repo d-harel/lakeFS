@@ -95,7 +95,7 @@ type retentionQueryRecord struct {
 	Path            string   `db:"path"`
 }
 
-func buildRetentionQuery(repositoryName string, policy *Policy) sq.SelectBuilder {
+func buildRetentionQuery(repositoryName string, policy *Policy, afterRow *sqlx.Row, limit *uint64) (sq.SelectBuilder, error) {
 	var (
 		byNonCurrent  = sq.Expr("min_commit != 0 AND max_commit < catalog_max_commit_id()")
 		byUncommitted = sq.Expr("min_commit = 0")
@@ -135,12 +135,28 @@ func buildRetentionQuery(repositoryName string, policy *Policy) sq.SelectBuilder
 		ruleSelectors = append(ruleSelectors, selector)
 	}
 
+	filter := sq.And{repositorySelector, sq.Or(ruleSelectors)}
+	if afterRow != nil {
+		var r retentionQueryRecord
+		if err := afterRow.Scan(&r); err != nil {
+			return sq.SelectBuilder{}, fmt.Errorf("failed to unwrap last row %v: %w", afterRow, err)
+		}
+		filter = sq.And{
+			filter,
+			sq.Expr("(physical_address, branch_id, min_commit) > (?, ?, ?)", r.PhysicalAddress, r.BranchID, r.MinCommit),
+		}
+	}
+
 	query := psql.Select("physical_address", "catalog_branches.name AS branch", "branch_id", "path", "min_commit").
 		From(entriesTable).
-		Where(sq.And{repositorySelector, sq.Or(ruleSelectors)})
+		Where(filter)
 	query = query.Join("catalog_branches ON catalog_entries.branch_id = catalog_branches.id").
 		Join("catalog_repositories on catalog_branches.repository_id = catalog_repositories.id")
-	return query
+	if limit != nil {
+		query = query.OrderBy("physical_address", "branch_id", "min_commit").
+			Limit(*limit)
+	}
+	return query, nil
 }
 
 // expiryRows implements ExpiryRows.
@@ -182,11 +198,15 @@ func (e *expiryRows) Read() (*ExpireResult, error) {
 func (c *cataloger) QueryEntriesToExpire(ctx context.Context, repositoryName string, policy *Policy) (ExpiryRows, error) {
 	logger := logging.FromContext(ctx).WithField("policy", *policy)
 
-	// TODO(ariels): Get lowest possible isolation level here.
-	expiryByEntriesQuery := buildRetentionQuery(repositoryName, policy)
-	expiryByEntriesQueryString, args, err := expiryByEntriesQuery.ToSql()
+	// TODO(ariels): page!
+	expiryByEntriesQuery, err := buildRetentionQuery(repositoryName, policy, nil, nil)
 	if err != nil {
 		return nil, fmt.Errorf("building query: %w", err)
+	}
+	// TODO(ariels): Get lowest possible isolation level here.
+	expiryByEntriesQueryString, args, err := expiryByEntriesQuery.ToSql()
+	if err != nil {
+		return nil, fmt.Errorf("converting query to SQL: %w", err)
 	}
 
 	// Hold retention query results as a CTE in a WITH prefix.  Everything must live in a
