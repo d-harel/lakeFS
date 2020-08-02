@@ -98,7 +98,7 @@ var expireCmd = &cobra.Command{
 				continue
 			}
 
-			errCh := retention.ExpireOnS3(ctx, s3ControlClient, s3Client, cataloger, expiryReader, &expiryParams)
+			errCh := retention.ExpireOnS3(ctx, s3ControlClient, s3Client, cataloger, repo, expiryReader, &expiryParams)
 
 			repoOk := true
 			for err := range errCh {

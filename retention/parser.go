@@ -11,13 +11,13 @@ import (
 const (
 	hoursInADay             = 24
 	daysInAWeek             = 7
-	hoursMinAllowExpiration = 2
+	hoursMinAllowExpiration = 0 // BUG
 )
 
 func ParseTimePeriod(model models.TimePeriod) (catalog.TimePeriodHours, error) {
 	ret := catalog.TimePeriodHours(hoursInADay * (model.Days + 7*model.Weeks))
 	if ret < catalog.TimePeriodHours(hoursMinAllowExpiration) {
-		return catalog.TimePeriodHours(0), fmt.Errorf("minimal allowable expiration is 2 hours")
+		return catalog.TimePeriodHours(0), fmt.Errorf("minimal allowable expiration is %d hours", hoursMinAllowExpiration)
 	}
 	return ret, nil
 }

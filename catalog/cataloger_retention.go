@@ -294,3 +294,65 @@ func (c *cataloger) MarkExpired(ctx context.Context, repositoryName string, expi
 	logger.WithField("count", count).Info("expired records")
 	return nil
 }
+
+// TODO(ariels): chunk.
+func (c *cataloger) MarkObjectsForDeletion(ctx context.Context, repositoryName string) (int64, error) {
+	// TODO(ariels): This query is difficult to chunk.  One way: Perform the inner SELECT
+	// once into a temporary table, then in a separate transaction chunk the UPDATE by
+	// dedup_id (this is not yet the real deletion).
+	result, err := c.db.Exec(`
+                    UPDATE catalog_object_dedup SET deleting=true
+                    WHERE repository_id IN (SELECT id FROM catalog_repositories WHERE name = $1) AND
+                          physical_address IN (
+                              SELECT physical_address FROM (
+                                SELECT physical_address, bool_and(is_expired) all_expired
+                                FROM catalog_entries
+                                GROUP BY physical_address
+                              ) physical_addresses_with_expiry
+                              WHERE all_expired)`, repositoryName)
+	return result, err
+}
+
+type StringRows struct {
+	rows *sqlx.Rows
+}
+
+func (s *StringRows) Next() bool {
+	return s.rows.Next()
+}
+
+func (s *StringRows) Err() error {
+	return s.rows.Err()
+}
+
+func (s *StringRows) Close() error {
+	return s.rows.Close()
+}
+
+func (s *StringRows) Read() (string, error) {
+	var ret string
+	err := s.rows.Scan(&ret)
+	return ret, err
+}
+
+// TODO(ariels): Process in chunks.  Can store the inner physical_address query in a table for
+//     the duration.
+func (c *cataloger) DeleteOrUnmarkObjectsForDeletion(ctx context.Context, repositoryName string) (StringRows, error) {
+	rows, err := c.db.Queryx(`
+		WITH ids AS (SELECT id repository_id FROM catalog_repositories WHERE name = $1),
+		    update_result AS (
+			UPDATE catalog_object_dedup SET deleting=all_expired
+			 FROM (
+			     SELECT physical_address, bool_and(is_expired) all_expired
+			     FROM catalog_entries
+			     GROUP BY physical_address
+			 ) AS by_entries
+			 WHERE repository_id IN (SELECT repository_id FROM ids) AND
+			       catalog_object_dedup.physical_address = by_entries.physical_address
+			 RETURNING by_entries.physical_address, all_expired
+		    )
+		SELECT physical_address FROM update_result WHERE all_expired`,
+		repositoryName,
+	)
+	return StringRows{rows}, err
+}
