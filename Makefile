@@ -1,3 +1,7 @@
+# check mandatory dependencies
+EXECUTABLES = go docker npm
+_ := $(foreach exec,$(EXECUTABLES),\
+        $(if $(shell which $(exec)),,$(error "Missing dependency - no $(exec) in PATH")))
 
 GOCMD=$(shell which go)
 DOCKER=$(shell which docker)
